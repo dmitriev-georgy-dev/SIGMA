@@ -16,7 +16,7 @@
 
 1. **Клонируйте репозиторий и перейдите в папку проекта:**
    ```bash
-   git clone https://https://github.com/dmitriev-georgy-dev/SIGMA
+   git clone https://github.com/dmitriev-georgy-dev/SIGMA
    cd SIGMA
    ```
 2. **Установите все зависимости одной командой:**
