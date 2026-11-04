@@ -1,0 +1,4 @@
+PyQt6>=6.4.0
+PyQt6-WebEngine>=6.4.0
+biopython>=1.81
+py3Dmol>=2.0.0

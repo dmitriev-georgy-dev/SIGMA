@@ -1,0 +1,29 @@
+# Кэш Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Временные папки сборки PyInstaller
+build/
+dist/
+*.spec
+
+# Виртуальные окружения (если используете локально)
+venv/
+.venv/
+env/
+
+# Локальные файлы конфигурации IDE
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Локальные файлы операционных систем
+.DS_Store
+Thumbs.db
