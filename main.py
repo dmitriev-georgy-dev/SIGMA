@@ -1,4 +1,4 @@
-"""Sequence Interface for Genetic Modeling and Analysis"""
+"""Sequence Interface for Genetic Modeling and Analysis (SIGMA) v1.1"""
 
 import sys
 import re
@@ -6,10 +6,14 @@ import os
 from Bio.Seq import Seq
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTextEdit, QVBoxLayout,
-    QHBoxLayout, QWidget, QPushButton, QSplitter
+    QHBoxLayout, QWidget, QPushButton, QSplitter, QComboBox, QLabel
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
+from PyQt6.QtCore import Qt, QThread
+
+# Импортируем поисковый движок и реестр базы данных
+from pdb_finder import LocalPDBFinder
+from protein_db import PROTEIN_REGISTRY
 
 # Принудительно отключаем черные списки видеокарт Chromium на уровне ОС
 os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--ignore-gpu-blocklist --disable-gpu-driver-bug-workarounds"
@@ -19,79 +23,31 @@ os.environ["QT_ANGLE_PLATFORM"] = "d3d11"
 def get_resource_path(relative_path):
     """Динамически определяет путь к ресурсам (работает и в .py, и в собранном .exe)"""
     if hasattr(sys, '_MEIPASS'):
-        # Если запущено внутри собранного PyInstaller пакета
         return os.path.join(sys._MEIPASS, relative_path)
-    # Если запущено как обычный скрипт .py
     return os.path.join(os.path.abspath("."), relative_path)
 
 
-# Создаст папку 'structures' в директории скрипта, если её ещё нет (только при обычном запуске)
 if not hasattr(sys, '_MEIPASS'):
     if not os.path.exists('structures'):
         os.makedirs('structures')
-
-# Тестовые последовательности
-Proinsuline = "tttgtgaaccaacacctgtgcggctcacacctggtggaagctctctacctagtgtgcggggaacgaggcttcttctacacacccaagacccgccgggaggcagaggacctgcaggtggggcaggtggagctgggcgggggccctggtgcaggcagcctgcagcccttggccctggaggggtccctgcagaagcgtggcattgtggaacaatgctgtaccagcatctgctccctctaccagctggagaactactgcaactag"
-Lysozime = "aaagtctttggacgatgtgagctggcagcggctatgaagagtcacggacttgataactaccgcggatacagcctgggaaactgggtgtgtgctgcaaaattcgagagtaacttcaacacccaggctacaaaccgtaacaccgatggcagtaccgactacggcatcctacagatcaacagccgctggtggtgcaacgatggccgaaccccaggatcgaggaacctgtgcaacatcccgtgctcagccctgctgagctcagacataacagcgagcgtgaactgcgcgaagaagatcgtcagcgatggaaacggcatgaacgcgtgggtcgcctggcgcaaccgctgcaagggtaccgacgtccaggcgtggatcagaggctgccggctgtaa"
-Myoglobin = "atgggtttgacggatggcgaatggcagctggtgctgaacgtgtggggcaaggtggaggccgacattccgggccacggccaggaggtgctgatccgcctgttcaagggccacccggagaccctggagaagttcgacaagttcaagcacctgaagagcgaggacgagatgaaggccagcgaggacctgaagaagcacggctgcaccgtgctgaccgccctgggcaccatcctgaagaagaagggccagcacgccgccgagatccagccgctggcccagagccacgccaccaagcacaagatcccggtgaagtacctggagttcatcagcgaggccatcatccaggtgctgcagagcaagcacccgggcgacttcggcgccgacgcccagggcgccatgaacaaggccctggagctgttccgcaaggacatcgccgccaagtacaaggagctgggctaccagggctag"
-
-
-class LocalPDBFinder(QObject):
-    """Класс для безопасного поиска файлов белков в локальной базе без использования интернета"""
-    finished = pyqtSignal(str)  # Передаст путь к файлу при успехе
-    error = pyqtSignal(str)     # Передаст текст ошибки, если белок не найден
-
-    def __init__(self, protein_seq):
-        super().__init__()
-        self.protein_seq = protein_seq
-
-    def run(self):
-        try:
-            import hashlib
-
-            # Локальная база данных: хэш аминокислотной последовательности -> имя файла в папке structures
-            LOCAL_PROTEIN_DB = {
-                # Человеческий проинсулин (1zeg)
-                hashlib.md5("FVNQHLCGSHLVEALYLVCGERGFFYTPKTRREAEDLQVGQVELGGGPGAGSLQPLALEGSLQKRGIVEQCCTSICSLYQLENYCN".encode()).hexdigest(): "pdb1zeg.ent",
-                # Лизоцим куриного яйца (1lyz)
-                hashlib.md5("KVFGRCELAAAMKSHGLDNYRGYSLGNWVCAAKFESNFNTQATNRNTDGSTDYGILQINSRWWCNDGRTPGSRNLCNIPCSALLSSDITASVNCAKKIVSDGNGMNAWVAWRNRCKGTDVQAWIRGCRL".encode()).hexdigest(): "pdb1lyz.ent",
-                # Миоглобин (1mbo)
-                hashlib.md5("MGLTDGEWQLVLNVWGKVEADIPGHGQEVLIRLFKGHPETLEKFDKFKHLKSEDEMKASEDLKKHGCTVLTALGTILKKKGQHAAEIQPLAQSHATKHKIPVKYLEFISEAIIQVLQSKHPGDFGADAQGAMNKALELFRKDIAAKYKELGYQG".encode()).hexdigest(): "pdb1mbo.ent"
-            }
-
-            # Считаем MD5-хэш полученного после трансляции белка
-            current_hash = hashlib.md5(self.protein_seq.encode()).hexdigest()
-
-            if current_hash in LOCAL_PROTEIN_DB:
-                file_name = LOCAL_PROTEIN_DB[current_hash]
-
-                # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Обернули путь в функцию адаптации под PyInstaller
-                expected_path = get_resource_path(os.path.join('structures', file_name))
-
-                # Проверяем, физически ли лежит файл в папке
-                if os.path.exists(expected_path):
-                    self.finished.emit(expected_path)
-                else:
-                    self.error.emit(f"Файл {file_name} зарегистрирован в базе, но отсутствует в папке 'structures'.")
-            else:
-                self.error.emit("Данная аминокислотная последовательность отсутствует в локальной базе данных программы.")
-
-        except Exception as e:
-            self.error.emit(f"Внутренняя ошибка поиска: {str(e)}")
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("SIGMA")
-        self.resize(1000, 600)
+        self.resize(1100, 650)
         self.setup_ui()
 
     def setup_ui(self):
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
 
-        # Главный горизонтальный разделитель: Текст (слева) и Графика (справа)
+        # Главный вертикальный макет, чтобы в самый низ положить строку логов
+        window_layout = QVBoxLayout(main_widget)
+        window_layout.setContentsMargins(5, 5, 0, 5)
+
+        # Основной горизонтальный разделитель (Текст / Графика)
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # --- ЛЕВАЯ ЧАСТЬ (Работа с текстом) ---
@@ -99,12 +55,16 @@ class MainWindow(QMainWindow):
         left_layout = QVBoxLayout(left_container)
         left_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Вертикальный разделитель для редакторов ДНК и Белка
+        # Новый элемент: Выпадающий список выбора белков
+        self.protein_selector = QComboBox()
+        self.protein_selector.addItems(PROTEIN_REGISTRY.keys())
+        self.protein_selector.currentIndexChanged.connect(self.on_protein_selected)
+
         text_splitter = QSplitter(Qt.Orientation.Vertical)
 
         self.dna_editor = QTextEdit()
-        self.dna_editor.setPlaceholderText("Введите ДНК последовательность (A, T, G, C)...")
-        self.dna_editor.setText(Proinsuline)
+        self.dna_editor.setPlaceholderText("Здесь отобразится кодирующая ДНК выбранного белка...")
+        self.dna_editor.setReadOnly(True)  # Теперь пользователь не редактирует вручную
 
         self.protein_reader = QTextEdit()
         self.protein_reader.setPlaceholderText("Здесь появится белковая последовательность...")
@@ -113,9 +73,11 @@ class MainWindow(QMainWindow):
         text_splitter.addWidget(self.dna_editor)
         text_splitter.addWidget(self.protein_reader)
 
-        self.protein_result_button = QPushButton("Транслировать в белок")
+        self.protein_result_button = QPushButton("Транслировать и смоделировать 3D")
         self.protein_result_button.clicked.connect(self.translate_protein)
 
+        left_layout.addWidget(QLabel("Выберите белок из базы данных:"))
+        left_layout.addWidget(self.protein_selector)
         left_layout.addWidget(text_splitter)
         left_layout.addWidget(self.protein_result_button)
 
@@ -128,17 +90,33 @@ class MainWindow(QMainWindow):
 
         main_splitter.addWidget(left_container)
         main_splitter.addWidget(self.graphics_panel)
-        main_splitter.setSizes([600, 400])
+        main_splitter.setSizes([550, 550])
 
-        final_layout = QHBoxLayout(main_widget)
-        final_layout.addWidget(main_splitter)
+        # --- НИЖНЯЯ ЧАСТЬ (Строка логов) ---
+        self.status_log = QLabel("[Система] Программа готова к работе. Выберите биополимер.")
+        self.status_log.setStyleSheet("color: #aaa; background-color: #252525; padding: 5px; font-family: monospace;")
+
+        # Собираем всё в главное окно
+        window_layout.addWidget(main_splitter)
+        window_layout.addWidget(self.status_log)
+
+        # Инициализируем первое значение
+        self.on_protein_selected()
+
+    def on_protein_selected(self):
+        """Автоматически подставляет ДНК при смене выбранного белка в списке"""
+        selected_name = self.protein_selector.currentText()
+        if selected_name in PROTEIN_REGISTRY:
+            self.dna_editor.setText(PROTEIN_REGISTRY[selected_name]["dna"])
+            self.protein_reader.clear()
+            self.status_log.setText(f"[Система] Загружена последовательность ДНК для: {selected_name}")
 
     def on_search_success(self, file_path):
-        self.protein_reader.append("\n[Система] Структура найдена в локальной базе.")
+        self.status_log.setText("[Система] Структура успешно найдена в локальной базе. Начинается отрисовка...")
         self.render_protein_3d(file_path)
 
     def on_search_error(self, error_message):
-        self.protein_reader.append(f"\n[Ошибка локальной базы] {error_message}")
+        self.status_log.setText(f"[Ошибка базы] {error_message}")
 
     def render_protein_3d(self, file_path):
         import py3Dmol
@@ -153,41 +131,34 @@ class MainWindow(QMainWindow):
 
             html_content = view._make_html()
             self.graphics_panel.setHtml(html_content)
-            self.protein_reader.append("\n[Система] 3D-модель успешно отрисована!")
+            self.status_log.setText("[Система] 3D-модель биополимера успешно отрисована!")
         except Exception as e:
-            self.protein_reader.append(f"\n[Ошибка визуализации] Не удалось отобразить 3D: {str(e)}")
+            self.status_log.setText(f"[Ошибка визуализации] Не удалось отобразить 3D: {str(e)}")
 
     def translate_protein(self):
         raw_dna = self.dna_editor.toPlainText().strip()
         dna_seq = re.sub(r'[\s\n\r]', '', raw_dna).upper()
 
         if not dna_seq:
-            self.protein_reader.setText("Ошибка: Пожалуйста, введите последовательность ДНК.")
+            self.status_log.setText("[Предупреждение] Поле ДНК пусто.")
             return
-
-        if not re.match(r'^[ATGC]+$', dna_seq):
-            self.protein_reader.setText("Ошибка: Последовательность содержит недопустимые символы! Допускаются только A, T, G, C.")
-            return
-
-        if len(dna_seq) % 3 != 0:
-            self.protein_reader.setText(f"Предупреждение: Длина последовательности ({len(dna_seq)}) не кратна 3. Возможен сдвиг рамки!")
 
         try:
-            # Трасляция ДНК в белок с помощью Biopython
+            # Трансляция ДНК в белок
             rna = Seq(dna_seq).transcribe()
             protein = rna.translate(to_stop=True)
             self.protein_reader.setText(str(protein))
+            self.status_log.setText("[Система] Трансляция завершена. Поиск структуры в потоке...")
 
-            # Создаем отдельный поток для локального поиска файла структуры
+            # Поиск структуры через QThread
             self.thread = QThread()
-            self.finder = LocalPDBFinder(str(protein))
+            self.finder = LocalPDBFinder(str(protein), get_resource_path)
             self.finder.moveToThread(self.thread)
 
             self.thread.started.connect(self.finder.run)
             self.finder.finished.connect(self.on_search_success)
             self.finder.error.connect(self.on_search_error)
 
-            # Очистка памяти
             self.finder.finished.connect(self.thread.quit)
             self.finder.error.connect(self.thread.quit)
             self.finder.finished.connect(self.finder.deleteLater)
@@ -196,7 +167,7 @@ class MainWindow(QMainWindow):
 
             self.thread.start()
         except Exception as e:
-            self.protein_reader.setText(f"Критическая ошибка обработки: {str(e)}")
+            self.status_log.setText(f"[Критическая ошибка] Ошибка обработки: {str(e)}")
 
 
 if __name__ == "__main__":
